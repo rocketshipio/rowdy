@@ -71,8 +71,8 @@ class Resource
 end
 
 class Application
-  mount Resource.new(model: Person),
-  mount Resource.new(model: Animal), at: "/animals"
+  route "people", to: Resource.new(model: Person)
+  route "animals", to: Resource.new(model: Animal)
 
   get def greet
     "Hello! Check out /persons and /animals"

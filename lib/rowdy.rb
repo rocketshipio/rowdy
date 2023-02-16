@@ -69,20 +69,16 @@ module Rowdy
       self.class.router
     end
 
-    # def dispatcher
-    #   Dispatcher::Base.new(application: self)
-    # end
-
-    def rack
+    def dispatcher
       Dispatcher.new(application: self)
     end
 
     def call(...)
-      rack.call(...)
+      dispatcher.call(...)
     end
 
     def request(...)
-      rack.request(...)
+      dispatcher.request(...)
     end
 
     module ClassMethods
