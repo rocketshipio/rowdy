@@ -18,37 +18,56 @@ module Rowdy
     end
   end
 
-  class Transaction < Data.define(:request, :response)
-    class Request < Rack::Request
+  class Transaction
+    Request = Class.new(Rack::Request)
+    Response = Class.new(Rack::Response)
+
+    class Route
+      def initialize(transaction)
+        @request = transaction.request
+      end
+
       def request_method
-        super.downcase.to_sym
+        @request.request_method.downcase.to_sym
       end
 
       def path_segments
-        path.split("/")[1..-1]
+        @request.path.split("/")[1..-1]
       end
 
       def domain_segments
-        host.split(".")
+        @request.host.split(".")
+      end
+
+      def is_root?
+        @request.path == "/"
       end
 
       def deconstruct_keys(keys)
         {
-          fullpath: path,
+          fullpath: @request.path,
           path: path_segments,
-          host: host,
+          host: @request.host,
           domain: domain_segments,
-          scheme: scheme,
-          port: port,
-          params: params,
+          scheme: @request.scheme,
+          port: @request.port,
+          params: @request.params,
           method: request_method,
-          ip: ip,
-          root: fullpath == "/"
+          ip: @request.ip,
+          root: is_root?
         }
       end
     end
 
-    class Response < Rack::Response
+    attr_reader :request, :response
+
+    def initialize(request:, response:)
+      @request = request
+      @response = response
+    end
+
+    def route
+      @route ||= Route.new(self)
     end
 
     def self.from_rack(env)
@@ -65,7 +84,7 @@ module Rowdy
       include Routing
 
       def route(http)
-        http.response.write self.public_send http.request.request_method
+        http.response.write self.public_send http.route.request_method
       end
     end
 
@@ -127,7 +146,7 @@ module Rowdy
       end
 
       def route(http)
-        case http.request
+        case http.route
           in path: [ _, id ], method: :get
             show.route http
           in path: [ _, id, "edit" ], method: :get
@@ -141,7 +160,7 @@ module Rowdy
     class Resources
       include Routing
 
-      def initialize(scope:, path: "people")
+      def initialize(scope:, path:)
         @scope = scope
         @path = path
       end
@@ -155,7 +174,7 @@ module Rowdy
       end
 
       def route(http)
-        case http.request
+        case http.route
           in path: [ ^@path ], method: :get
             index.route http
           in path: [ ^@path, id, *_ ]

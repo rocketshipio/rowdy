@@ -18,11 +18,11 @@ class Application < Rowdy::Server
     http.response.headers["Content-Type"] = "text/plain"
     http.response.status = 200
 
-    case http.request
+    case http.route
       in root: true
         http.response.write "Hello world!"
       in path: ["people", *_ ]
-        Rowdy::Controller::Resources.new(scope: Model::Person).route(http)
+        Rowdy::Controller::Resources.new(scope: Model::Person, path: "people").route(http)
     else
       http.response.write "Not Found"
       http.response.status = 404

@@ -17,9 +17,9 @@ class Application
     http.response.headers["Content-Type"] = "text/plain"
     http.response.status = 200
 
-    case http.request
+    case http.route
       in root: true
-        "Hello from Rowdy!"
+        http.response.write "Hello from Rowdy!"
       in path: [ "blogs", id, *_ ]
         Rowdy::Controller::Resources.new(scope: Blog).route(http)
       in path: [ "posts", id, *_ ]
@@ -71,9 +71,9 @@ class Application
     http.response.headers["Content-Type"] = "text/plain"
     http.response.status = 200
 
-    case http.request
+    case http.route
       in root: true
-        "Hello from Rowdy!"
+        http.response.write "Hello from Rowdy!"
       in path: [ "blogs", id, *_ ]
         Rowdy::Controller::Resources.new(scope: Blog).route(http)
       in path: [ "posts", id, *_ ]
