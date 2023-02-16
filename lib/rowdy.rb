@@ -5,95 +5,162 @@ require_relative "rowdy/version"
 module Rowdy
   class Error < StandardError; end
 
-  class Route < Data.define(:path, :method)
-  end
-
-  class Request < Data.define(:path, :method, :params)
-    def route
-      Route.new(path: path, method: method)
-    end
-
-    def params
-      Hash[super.map{ |k ,v| [k.to_sym, v] }]
-    end
-  end
-
-  class Router
-    def routes
-      @routes ||= []
-    end
-
-    def add(method, path)
-      routes.append Route.new(path: path, method: method)
-    end
-  end
-
-  class Dispatcher
-    def initialize(application:, router: nil)
-      @application = application
-      @router = router || application.router
-    end
-
+  module Routing
     def call(env)
-      rack = ::Rack::Request.new(env)
-      # This is a really lousy way of capturing `foo` from `/foo/bar/bizz/buzz`.
-      _, path, *_ = rack.path.split("/")
-
-      request_method = rack.request_method.downcase.to_sym
-
-      request Request.new \
-        path: path.to_sym,
-        params: rack.params,
-        method: request_method
+      dispatch Transaction.from_rack env
     end
 
-    def request(req)
-      if match = @router.routes.find{ |route| route == req.route }
-        action = @application.public_method(match.path)
-        response = action.arity.zero? ? action.call : action.call(**req.params)
-        [ 200, { "Content-Type" => "text/plain" }, [ response ] ]
-      else
-        [ 404, { "Content-Type" => "text/plain" }, "Not Found" ]
+    protected
+
+    def dispatch(http)
+      route http
+      http.response.to_a
+    end
+  end
+
+  class Transaction < Data.define(:request, :response)
+    class Request < Rack::Request
+      def request_method
+        super.downcase.to_sym
+      end
+
+      def path_segments
+        path.split("/")[1..-1]
+      end
+
+      def domain_segments
+        host.split(".")
+      end
+
+      def deconstruct_keys(keys)
+        {
+          fullpath: path,
+          path: path_segments,
+          host: host,
+          domain: domain_segments,
+          scheme: scheme,
+          port: port,
+          params: params,
+          method: request_method,
+          ip: ip,
+          root: fullpath == "/"
+        }
+      end
+    end
+
+    class Response < Rack::Response
+    end
+
+    def self.from_rack(env)
+      new request: Request.new(env), response: Response.new
+    end
+  end
+
+  class Server
+    include Routing
+  end
+
+  module Action
+    class Base
+      include Routing
+
+      def route(http)
+        http.response.write self.public_send http.request.request_method
+      end
+    end
+
+    class Singular < Base
+      def initialize(model:)
+        @model = model
+      end
+    end
+
+    class Collection < Base
+      def initialize(scope:)
+        @scope = scope
+      end
+    end
+
+    class Index < Collection
+      def get
+        @scope.all
+      end
+
+      def get_json
+        get.to_json
+      end
+    end
+
+    class Show < Singular
+      def get
+        @model
+      end
+    end
+
+    class Edit < Singular
+      def get
+        "Editing #{@model}"
       end
     end
   end
 
-  module Routing
-    HTTP_METHODS = %i[get put patch post delete]
+  module Controller
+    class Resource
+      include Routing
 
-    def self.included(base)
-      base.extend ClassMethods
-    end
+      def initialize(scope:, id:)
+        @scope = scope
+        @id = id
+        @model = @scope.find(@id)
+      end
 
-    def router
-      self.class.router
-    end
+      def show
+        Action::Show.new(model: @model)
+      end
 
-    def dispatcher
-      Dispatcher.new(application: self)
-    end
+      def edit
+        Action::Edit.new(model: @model)
+      end
 
-    def call(...)
-      dispatcher.call(...)
-    end
+      def destroy
+        @model.destroy
+      end
 
-    def request(...)
-      dispatcher.request(...)
-    end
-
-    module ClassMethods
-      HTTP_METHODS.each do |http_method|
-        define_method http_method do |action|
-          router.add http_method, action
+      def route(http)
+        case http.request
+          in path: [ _, id ], method: :get
+            show.route http
+          in path: [ _, id, "edit" ], method: :get
+            edit.route http
+          in path: [ _, id ], method: :delete
+            destroy
         end
       end
+    end
 
-      def route(app, *args, **kwargs)
-        p [:route, app, *args, **kwargs]
+    class Resources
+      include Routing
+
+      def initialize(scope:, path: "people")
+        @scope = scope
+        @path = path
       end
 
-      def router
-        @router ||= Router.new
+      def index
+        Action::Index.new(scope: @scope)
+      end
+
+      def resource(id)
+        Resource.new(scope: @scope, id: id)
+      end
+
+      def route(http)
+        case http.request
+          in path: [ ^@path ], method: :get
+            index.route http
+          in path: [ ^@path, id, *_ ]
+            resource(id).route http
+        end
       end
     end
   end

@@ -1,43 +1,46 @@
 # Rowdy
 
-Rowdy is a gem that makes it possible to route web requests to classes. It does this by breaking routing into three distinct parts:
-
-1. **Dispatching** - The dispatcher takes a `Rack::Request` and makes it suitable for calling a method onto a Rowdy class.
-2. **Routing** - Routes are lists that the Dispatcher uses to lookup the class it should route to.
-3. **Applications** - Applications are classes that the Dispatcher can route to and fullfill a request.
-
-What's the point of all this? Writing less code! It makes this possible:
+Rowdy is a gem that takes a PORO approach to Ruby web routing using modern Ruby features, like pattern matching. Here's what Rowdy looks like in action.
 
 ```ruby
-class Resource
+Blog = Data.define(:title, :description)
+Post = Data.define(:title, :body)
+
+class Application
   include Rowdy::Routing
 
   def initialize(model:)
     @model = model
   end
 
-  get def show(id:) = "Finding #{@model.find(id).inspect}"
-  post def create(**kwargs) = "Creating #{@model.new(**kwargs)}"
+  def route(http)
+    http.response.headers["Content-Type"] = "text/plain"
+    http.response.status = 200
 
-  patch def bulk(ids: [])
-    models = ids.map { |id| @model.find id }
-    "Do some bulk stuff with all these models: #{models.inspect}"
-  end
-end
-
-class Application
-  include Rowdy::Routing
-
-  mount Resource.new(model: Person),
-  mount Resource.new(model: Animal), at: "/animals"
-
-  get def greet
-    "Hello! Check out /persons and /animals"
+    case http.request
+      in root: true
+        "Hello from Rowdy!"
+      in path: [ "blogs", id, *_ ]
+        Rowdy::Controller::Resources.new(scope: Blog).route(http)
+      in path: [ "posts", id, *_ ]
+        Rowdy::Controller::Resources.new(scope: Post).route(http)
+      else
+        http.response.status = 404
+        http.response.write "Not Found"
+    end
   end
 end
 ```
 
-If you tried to do this in Rails, you'd have to generate a controller per resource even though they probably do the same thing.
+If you tried to do this in Rails, you'd have to generate a controller per resource even though they probably do the same thing. Since Rowdy embraces a full PORO approach to building web applications, you can compose classes in a very object-oriented way.
+
+Rowdy is composed if the three follow concepts:
+
+* **Application** - This is the main routing file, as depicted above.
+
+* **Controller** - Controllers are a collection of similar Actions, but not like you're thinking. In Rails, a controller has various methods that are actions. If you want to do things before and after the action, you're going to get stuck in callback soup. Rowdy is different in that action action is a class, so you can create a `ProtectedAction` subclass that requires a login, then use that subclass in the controller.
+
+* **Action** - An action is a plain 'ol Ruby object that includes `Rowdy::Routing`.
 
 ## Installation
 
@@ -54,28 +57,31 @@ If bundler is not being used to manage dependencies, install the gem by executin
 Create something like this in `app.rb`
 
 ```ruby
-class Resource
-  include Routing
+Blog = Data.define(:title, :description)
+Post = Data.define(:title, :body)
+
+class Application
+  include Rowdy::Routing
 
   def initialize(model:)
     @model = model
   end
 
-  get def show(id:) = "Finding #{@model.find(id).inspect}"
-  post def create(**kwargs) = "Creating #{@model.new(**kwargs)}"
+  def route(http)
+    http.response.headers["Content-Type"] = "text/plain"
+    http.response.status = 200
 
-  patch def bulk(ids: [])
-    models = ids.map { |id| @model.find id }
-    "Do some bulk stuff with all these models: #{models.inspect}"
-  end
-end
-
-class Application
-  route "people", to: Resource.new(model: Person)
-  route "animals", to: Resource.new(model: Animal)
-
-  get def greet
-    "Hello! Check out /persons and /animals"
+    case http.request
+      in root: true
+        "Hello from Rowdy!"
+      in path: [ "blogs", id, *_ ]
+        Rowdy::Controller::Resources.new(scope: Blog).route(http)
+      in path: [ "posts", id, *_ ]
+        Rowdy::Controller::Resources.new(scope: Post).route(http)
+      else
+        http.response.status = 404
+        http.response.write "Not Found"
+    end
   end
 end
 ```
@@ -93,6 +99,81 @@ The run it.
 ```
 rackup config.ru
 ```
+
+## Prior art
+
+The idea of PORO Ruby web frameworks have been around forever, starting with [camping](https://github.com/camping/camping). Since then Ruby has a *ton* of really amazing web & routing frameworks. This section is intended to answer the question, "why Rowdy?". It is **not** intended to dunk on any other Ruby web or routing frameworks.
+
+### Camping
+
+Camping get's the closest to what I want. Consider the example code on the [camping Github repo](https://github.com/camping/camping).
+
+```ruby
+require 'camping'
+
+Camping.goes :Blog
+
+module Blog::Models
+  class Post < Base; belongs_to :user; end
+  class Comment < Base; belongs_to :user; end
+  class User < Base; end
+end
+
+module Blog::Controllers
+  class Index
+    def get
+      @posts = Post.find :all
+      render :index
+    end
+  end
+end
+
+module Blog::Views
+  def layout
+    html do
+      head { title "My Blog" }
+      body do
+        h1 "My Blog"
+        self << yield
+      end
+    end
+  end
+
+  def index
+    @posts.each do |post|
+      h1 post.title
+    end
+  end
+end
+```
+
+Everything looks fine at first glance, but if you try to extend `Blog::Controllers`, you can't because it's a module. Instead you'd have to do something like this:
+
+```ruby
+module ExtendedBlog::Controllers
+  Index = Blog::Controllers::Index
+  # Example above leaves out all the other actions you'd have to manually extend...
+  Show = Blog::Controllers::Show
+  Edit = Blog::Controllers::Edit
+  Delete = Blog::Controllers::Delete
+end
+```
+
+Zoiks! That's no fun.
+
+Rowdy gets around that with the concept of a `Rowdy::Controller` class being a very loose association of `Rowdy::Action` classes. The `Rowdy::Controller` has the methods you'd expect, `#index`, `#show`, etc., but they create instances of `Rowdy:Action` classes with the context you'd expect.
+
+### Roda
+
+TODO
+
+### Sinatra
+
+TODO
+
+### Rails
+
+TODO
 
 ## Development
 
