@@ -20,9 +20,9 @@ class Application
     case http.route
       in root: true
         http.response.write "Hello from Rowdy!"
-      in path: [ "blogs", id, *_ ]
+      in "blogs", id, *_
         Rowdy::Controller::Resources.new(scope: Blog).route(http)
-      in path: [ "posts", id, *_ ]
+      in "posts", id, *_
         Rowdy::Controller::Resources.new(scope: Post).route(http)
       else
         http.response.status = 404
@@ -74,9 +74,9 @@ class Application
     case http.route
       in root: true
         http.response.write "Hello from Rowdy!"
-      in path: [ "blogs", id, *_ ]
+      in "blogs", id, *_
         Rowdy::Controller::Resources.new(scope: Blog).route(http)
-      in path: [ "posts", id, *_ ]
+      in "posts", id, *_
         Rowdy::Controller::Resources.new(scope: Post).route(http)
       else
         http.response.status = 404

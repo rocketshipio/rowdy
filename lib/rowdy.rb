@@ -43,6 +43,10 @@ module Rowdy
         @request.path == "/"
       end
 
+      def deconstruct
+        path_segments
+      end
+
       def deconstruct_keys(keys)
         {
           fullpath: @request.path,
@@ -79,53 +83,36 @@ module Rowdy
     include Routing
   end
 
-  module Action
-    class Base
-      include Routing
+  # Calls the `get`, `post`, etc. method on the class.
+  class Action
+    include Routing
 
-      def route(http)
-        http.response.write self.public_send http.route.request_method
-      end
-    end
-
-    class Singular < Base
-      def initialize(model:)
-        @model = model
-      end
-    end
-
-    class Collection < Base
-      def initialize(scope:)
-        @scope = scope
-      end
-    end
-
-    class Index < Collection
-      def get
-        @scope.all
-      end
-
-      def get_json
-        get.to_json
-      end
-    end
-
-    class Show < Singular
-      def get
-        @model
-      end
-    end
-
-    class Edit < Singular
-      def get
-        "Editing #{@model}"
-      end
+    def route(http)
+      http.response.write self.public_send http.route.request_method
     end
   end
 
   module Controller
     class Resource
       include Routing
+
+      class Base < Action
+        def initialize(model:)
+          @model = model
+        end
+      end
+
+      class Show < Base
+        def get
+          @model
+        end
+      end
+
+      class Edit < Base
+        def get
+          "Editing #{@model}"
+        end
+      end
 
       def initialize(scope:, id:)
         @scope = scope
@@ -134,11 +121,11 @@ module Rowdy
       end
 
       def show
-        Action::Show.new(model: @model)
+        self.class::Show.new(model: @model)
       end
 
       def edit
-        Action::Edit.new(model: @model)
+        self.class::Edit.new(model: @model)
       end
 
       def destroy
@@ -160,17 +147,33 @@ module Rowdy
     class Resources
       include Routing
 
+      class Base < Action
+        def initialize(scope:)
+          @scope = scope
+        end
+      end
+
+      class Index < Base
+        def get
+          @scope.all
+        end
+      end
+
       def initialize(scope:, path:)
         @scope = scope
         @path = path
       end
 
       def index
-        Action::Index.new(scope: @scope)
+        Index.new(scope: @scope)
       end
 
       def resource(id)
-        Resource.new(scope: @scope, id: id)
+        resource_class.new(scope: @scope, id: id)
+      end
+
+      def resource_class
+        Resource
       end
 
       def route(http)
