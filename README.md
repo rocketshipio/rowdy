@@ -10,7 +10,7 @@ What's the point of all this? Writing less code! It makes this possible:
 
 ```ruby
 class Resource
-  include Routing
+  include Rowdy::Routing
 
   def initialize(model:)
     @model = model
@@ -26,6 +26,8 @@ class Resource
 end
 
 class Application
+  include Rowdy::Routing
+
   mount Resource.new(model: Person),
   mount Resource.new(model: Animal), at: "/animals"
 

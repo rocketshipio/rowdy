@@ -5,13 +5,26 @@ require_relative "rowdy/version"
 module Rowdy
   class Error < StandardError; end
 
+  class Route < Data.define(:path, :method)
+  end
+
+  class Request < Data.define(:path, :method, :params)
+    def route
+      Route.new(path: path, method: method)
+    end
+
+    def params
+      Hash[super.map{ |k ,v| [k.to_sym, v] }]
+    end
+  end
+
   class Router
     def routes
       @routes ||= []
     end
 
-    def add(*args)
-      routes.append args
+    def add(method, path)
+      routes.append Route.new(path: path, method: method)
     end
   end
 
@@ -19,18 +32,28 @@ module Rowdy
     def initialize(application:, router: nil)
       @application = application
       @router = router || application.router
-      p [:routes, @router.routes]
     end
 
-    def call(path:, method: :get, params: {})
-      p requested_route = [ method.to_sym, path.to_sym ]
-      p case @router.routes.find { |route| route == requested_route }
-        in [_, action_name]
-          action = @application.method(action_name)
-          response = action.arity.zero? ? action.call : action.call(**params)
-          [ 200, response ]
-        in nil
-          [ 404, "Not Found" ]
+    def call(env)
+      rack = ::Rack::Request.new(env)
+      # This is a really lousy way of capturing `foo` from `/foo/bar/bizz/buzz`.
+      _, path, *_ = rack.path.split("/")
+
+      request_method = rack.request_method.downcase.to_sym
+
+      request Request.new \
+        path: path.to_sym,
+        params: rack.params,
+        method: request_method
+    end
+
+    def request(req)
+      if match = @router.routes.find{ |route| route == req.route }
+        action = @application.public_method(match.path)
+        response = action.arity.zero? ? action.call : action.call(**req.params)
+        [ 200, { "Content-Type" => "text/plain" }, [ response ] ]
+      else
+        [ 404, { "Content-Type" => "text/plain" }, "Not Found" ]
       end
     end
   end
@@ -46,12 +69,20 @@ module Rowdy
       self.class.router
     end
 
-    def dispatcher
+    # def dispatcher
+    #   Dispatcher::Base.new(application: self)
+    # end
+
+    def rack
       Dispatcher.new(application: self)
     end
 
     def call(...)
-      dispatcher.call(...)
+      rack.call(...)
+    end
+
+    def request(...)
+      rack.request(...)
     end
 
     module ClassMethods
@@ -59,6 +90,10 @@ module Rowdy
         define_method http_method do |action|
           router.add http_method, action
         end
+      end
+
+      def route(app, *args, **kwargs)
+        p [:route, app, *args, **kwargs]
       end
 
       def router
