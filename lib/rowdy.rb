@@ -84,33 +84,6 @@ module Rowdy
   end
 
   module Controller
-    class Resources
-      include Routing
-
-      def initialize(scope:)
-        @scope = scope
-      end
-
-      def index
-        "All of #{@scope.all.inspect}"
-      end
-
-      def route(http)
-        case http.route
-          in path: [ _ , id, *_ ]
-            resource(id).route(http)
-          in path: [ _ ], method: :get
-            http.response.write index
-        end
-      end
-
-      protected
-
-      def resource(id)
-        Resource.new(model: @scope.find(id))
-      end
-    end
-
     class Resource
       include Routing
 
@@ -141,5 +114,35 @@ module Rowdy
         end
       end
     end
+
+    class Resources
+      include Routing
+
+      Resource = Controller::Resource
+
+      def initialize(scope:)
+        @scope = scope
+      end
+
+      def index
+        "All of #{@scope.all.inspect}"
+      end
+
+      def route(http)
+        case http.route
+          in path: [ _ , id, *_ ]
+            resource(id).route(http)
+          in path: [ _ ], method: :get
+            http.response.write index
+        end
+      end
+
+      protected
+
+      def resource(id)
+        self.class::Resource.new(model: @scope.find(id))
+      end
+    end
+
   end
 end
