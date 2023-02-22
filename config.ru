@@ -3,7 +3,6 @@ require "bundler/inline"
 gemfile do
   source "https://rubygems.org"
   gem "rowdy", path: "."
-  gem "phlex"
   gem "rack"
   gem "puma"
 end
@@ -20,46 +19,6 @@ module Model
   end
 end
 
-module Controller
-  class Resource < Rowdy::Controller::Resource
-    class Show < Rowdy::Controller::Resource::Show
-      class View < Phlex::HTML
-        def initialize(model:)
-          @model = model
-        end
-
-        def template(&)
-          html do
-            head do
-              title { @title }
-            end
-
-            body do
-              h1 { @model.name }
-              pre do
-                code { @model.inspect }
-              end
-            end
-          end
-        end
-      end
-
-      def route(http)
-        http.response.headers["Content-Type"] = "text/html"
-        super http
-      end
-
-      def get
-        View.new(model: @model).call
-      end
-    end
-  end
-
-  class Resources < Rowdy::Controller::Resources
-    def resource_class = Resource
-  end
-end
-
 # Application code (dev sees this)
 class Application < Rowdy::Server
   def route(http)
@@ -68,9 +27,9 @@ class Application < Rowdy::Server
 
     case http.route
       in root: true
-        http.response.write "Hello world!"
+        http.response.write "Hello world! Check out the resources over at /people."
       in "people", *_
-        Controller::Resources.new(scope: Model::Person, path: "people").route(http)
+        Rowdy::Controller::Resources.new(scope: Model::Person).route(http)
     else
       http.response.write "Not Found"
       http.response.status = 404

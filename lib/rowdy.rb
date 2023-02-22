@@ -83,49 +83,47 @@ module Rowdy
     include Routing
   end
 
-  # Calls the `get`, `post`, etc. method on the class.
-  class Action
-    include Routing
-
-    def route(http)
-      http.response.write self.public_send http.route.request_method
-    end
-  end
-
   module Controller
+    class Resources
+      include Routing
+
+      def initialize(scope:)
+        @scope = scope
+      end
+
+      def index
+        "All of #{@scope.all.inspect}"
+      end
+
+      def route(http)
+        case http.route
+          in path: [ _ , id, *_ ]
+            resource(id).route(http)
+          in path: [ _ ], method: :get
+            http.response.write index
+        end
+      end
+
+      protected
+
+      def resource(id)
+        Resource.new(model: @scope.find(id))
+      end
+    end
+
     class Resource
       include Routing
 
-      class Base < Action
-        def initialize(model:)
-          @model = model
-        end
-      end
-
-      class Show < Base
-        def get
-          @model
-        end
-      end
-
-      class Edit < Base
-        def get
-          "Editing #{@model}"
-        end
-      end
-
-      def initialize(scope:, id:)
-        @scope = scope
-        @id = id
-        @model = @scope.find(@id)
+      def initialize(model:)
+        @model = model
       end
 
       def show
-        self.class::Show.new(model: @model)
+        "Showing #{@model.inspect}"
       end
 
       def edit
-        self.class::Edit.new(model: @model)
+        "Editing #{@model.inspect}"
       end
 
       def destroy
@@ -135,53 +133,11 @@ module Rowdy
       def route(http)
         case http.route
           in path: [ _, id ], method: :get
-            show.route http
+            http.response.write show
           in path: [ _, id, "edit" ], method: :get
-            edit.route http
+            http.response.write edit
           in path: [ _, id ], method: :delete
             destroy
-        end
-      end
-    end
-
-    class Resources
-      include Routing
-
-      class Base < Action
-        def initialize(scope:)
-          @scope = scope
-        end
-      end
-
-      class Index < Base
-        def get
-          @scope.all
-        end
-      end
-
-      def initialize(scope:, path:)
-        @scope = scope
-        @path = path
-      end
-
-      def index
-        Index.new(scope: @scope)
-      end
-
-      def resource(id)
-        resource_class.new(scope: @scope, id: id)
-      end
-
-      def resource_class
-        Resource
-      end
-
-      def route(http)
-        case http.route
-          in path: [ ^@path ], method: :get
-            index.route http
-          in path: [ ^@path, id, *_ ]
-            resource(id).route http
         end
       end
     end
