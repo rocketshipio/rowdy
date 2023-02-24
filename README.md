@@ -34,6 +34,44 @@ end
 
 If you tried to do this in Rails, you'd have to generate a controller per resource even though they probably do the same thing. Since Rowdy embraces a full PORO approach to building web applications, you can compose classes in a very object-oriented way.
 
+## Middleware
+
+Because Rowdy is PORO, you can use `Module.prepend` to add Middleware to your applicatons. Here's an example of how you might extend a controller with authentication.
+
+```ruby
+module Authentication
+  def route(http)
+    if Rack::Auth::Basic::Request.new(http.request.env).provided?
+      super http
+    else
+      http.response['WWW-Authenticate'] = %(Basic realm="Super duper ultra-secret area")
+      http.response.write "Authenticate with any username and password"
+      http.response.status = 401
+    end
+  end
+end
+
+module Logging
+  def route(http)
+    puts "You're requesting some stuff"
+    super http
+  end
+end
+
+class SecretApplication
+  include Rowdy::Routing
+
+  prepend Authentication
+  prepend Logging
+
+  def route(http)
+    http.response.write "Your fridge is running, you better go catch it!"
+  end
+end
+```
+
+# Concepts
+
 Rowdy is composed if the three follow concepts:
 
 * **Application** - This is the main routing file, as depicted above.

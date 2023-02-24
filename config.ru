@@ -19,28 +19,24 @@ module Model
   end
 end
 
-class ProtectedResources < Rowdy::Controller::Resources
-  class Resource < Resource
-    def show
-      "Super secret model #{@model.inspect}"
-    end
-  end
-
+module Authentication
   def route(http)
-    authenticate http do
-      super http
-    end
-  end
-
-  private
-
-  def authenticate(http)
     if Rack::Auth::Basic::Request.new(http.request.env).provided?
-      yield
+      super http
     else
       http.response['WWW-Authenticate'] = %(Basic realm="Super duper ultra-secret area")
       http.response.write "Authenticate with any username and password"
       http.response.status = 401
+    end
+  end
+end
+
+class ProtectedResources < Rowdy::Controller::Resources
+  prepend Authentication
+
+  class Resource < Resource
+    def show
+      "Super secret model #{@model.inspect}"
     end
   end
 end
