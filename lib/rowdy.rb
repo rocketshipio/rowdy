@@ -83,20 +83,106 @@ module Rowdy
     include Routing
   end
 
+  class Responder
+    include Routing
+
+    def text(text, **kwargs)
+      respond(text, mime_type: "text/plain", **kwargs)
+    end
+
+    def html(html, **kwargs)
+      html = html.call if html.respond_to? :call
+      respond(html, mime_type: "text/html", **kwargs)
+    end
+
+    def json(data, **kwargs)
+      respond(JSON.encode(data), mime_type: "applcation/json", **kwargs)
+    end
+
+    def respond(content, mime_type:, status: 200)
+      @content = content
+      @mime_type = mime_type
+      @status = status
+    end
+
+    def route(http)
+      http.response.headers["Content-Type"] = @mime_type
+      http.response.status = @status
+      http.response.write @content
+      http.response.finish
+    end
+  end
+
+  class Format
+    attr_reader :accept
+
+    def initialize(accept:, content_type: nil)
+      @accept = accept
+      @content_type = content_type || accept
+    end
+
+    def route(http)
+      http.response["Content-Type"] = @content_type
+      http.response.write respond
+    end
+  end
+
+  class Formats < Set
+    def compare_by_identity(object)
+      object.accept
+    end
+  end
+
+  class ResponseNegotiater
+    include Routing
+
+    def initialize
+      @formats = Formats.new
+    end
+
+    def json(&)
+      add_format accept: "application/json", content_type: "applcation/json", &
+    end
+
+    def html(&)
+      add_format accept: "text/html", content_type: "text/html", &
+    end
+
+    def text(&)
+      add_format accept: "text/plain", content_type: "text/plain", &
+    end
+
+    def add_format(**args, &block)
+      @formats << Class.new(Format) do
+        define_method :respond do
+          block.call
+        end
+      end.new(**args)
+    end
+
+    def route(http)
+      format = @formats.first # Assume we found it from the reouter
+      format.route(http)
+    end
+  end
+
+
   module Controller
     class Resource
       include Routing
+
+      attr_reader :response
 
       def initialize(model:)
         @model = model
       end
 
       def show
-        "Showing #{@model.inspect}"
+        response.text { "Showing #{@model.inspect}" }
       end
 
       def edit
-        "Editing #{@model.inspect}"
+        response.text { "Edit #{@model.inspect}" }
       end
 
       def destroy
@@ -104,14 +190,18 @@ module Rowdy
       end
 
       def route(http)
+        @response = ResponseNegotiater.new
+
         case http.route
           in path: [ _, id ], method: :get
-            http.response.write show
+            show
           in path: [ _, id, "edit" ], method: :get
-            http.response.write edit
+            edit
           in path: [ _, id ], method: :delete
             destroy
         end
+
+        @response.route(http)
       end
     end
 

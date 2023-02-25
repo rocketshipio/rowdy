@@ -1,10 +1,12 @@
 require "bundler/inline"
+require "json"
 
 gemfile do
   source "https://rubygems.org"
   gem "rowdy", path: "."
   gem "rack"
   gem "puma"
+  gem "phlex"
 end
 
 module Model
@@ -35,8 +37,20 @@ class ProtectedResources < Rowdy::Controller::Resources
   prepend Authentication
 
   class Resource < Resource
+    class View < Phlex::HTML
+      def initialize(model:)
+        @model = model
+      end
+
+      def template
+        h1 { "Hi" }
+        p { @model.inspect }
+      end
+    end
+
     def show
-      "Super secret model #{@model.inspect}"
+      response.html { View.new(model: @model).call }
+      # response.text { @model.to_s }
     end
   end
 end
