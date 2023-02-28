@@ -70,6 +70,26 @@ class SecretApplication
 end
 ```
 
+## Content negotation
+
+RESTful web applications need a way to detect the request format and respond with the appropriate format. Rowdy has content negotation built-in via the `http.format` object, which makes it possible to pattern match and assign the requested format and respond appropriately.
+
+```ruby
+class Application
+  include Rowdy::Routing
+
+  def route(http)
+    case http.format
+      in html:
+        html.write "<h1>Hello world!</h1>"
+      in json:
+        json.write "{'hello': 'world'}"
+      in plain:
+        plain.write "Hello world"
+  end
+end
+```
+
 # Concepts
 
 Rowdy is composed if the three follow concepts:

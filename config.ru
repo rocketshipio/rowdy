@@ -1,4 +1,5 @@
 require "bundler/inline"
+require "json"
 
 gemfile do
   source "https://rubygems.org"
@@ -21,7 +22,11 @@ end
 
 module Authentication
   def route(http)
-    if Rack::Auth::Basic::Request.new(http.request.env).provided?
+    auth = Rack::Auth::Basic::Request.new(http.request.env)
+    if auth.provided?
+      # super http.define :user do
+      #   auth.username
+      # end
       super http
     else
       http.response['WWW-Authenticate'] = %(Basic realm="Super duper ultra-secret area")
@@ -35,14 +40,41 @@ class ProtectedResources < Rowdy::Controller::Resources
   prepend Authentication
 
   class Resource < Resource
-    def show
-      "Super secret model #{@model.inspect}"
+    def show(http)
+      case http.format
+        in html:
+          html << """
+            <h1>#{@model.name}</h1>
+            <p>#{@model.email}</p>
+          """
+        in json:
+          json << @model.to_h.to_json
+        in plain:
+          plain << @model.inspect
+      end
+    end
+
+    def destroy(http)
+      @model.destroy
     end
   end
 end
 
 # Application code (dev sees this)
 class Application < Rowdy::Server
+  class Transaction < Transaction
+    def user
+      auth = Rack::Auth::Basic::Request.new(request.env)
+      if auth.provided?
+        auth.username
+      else
+        http.response['WWW-Authenticate'] = %(Basic realm="Super duper ultra-secret area")
+        http.response.write "Authenticate with any username and password"
+        http.response.status = 401
+      end
+    end
+  end
+
   def route(http)
     http.response.headers["Content-Type"] = "text/plain"
     http.response.status = 200
